@@ -17,6 +17,8 @@ DONE_FILE="${RALPH_DIR}/.done"
 DEFAULT_TASK_FILE="${RALPH_DIR}/tasks"
 IMPORT_RUN=""
 
+export COPILOT_CUSTOM_INSTRUCTIONS_DIRS="${HOME}/.agents/rules"
+
 usage() {
 	cat <<- EOF
 		Usage: ralph [options] [subcommand]
