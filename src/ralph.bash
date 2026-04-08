@@ -30,7 +30,7 @@ usage() {
 		    -n <num>, --iterations <num> Number of iterations to perform (default: ${DEFAULT_ITERATIONS})
 		    -m <model>, --model <model>  Specify the AI model to use (default: ${DEFAULT_MODEL})
 		    --force                      Force the task to run even if it is marked as completed
-	      --import-run <dir>           Import iteration files from a previous run directory as starting memory
+		    --import-run <dir>           Import iteration files from a previous run directory as starting memory
 
 		Subcommands:
 		    init                          Initialize the Ralph environment in the current directory
@@ -72,6 +72,8 @@ parse-args() {
 			--import-run)
 				if [[ $# -gt 1 && "$2" != -* ]]; then
 					IMPORT_RUN="$2"
+					# Imported runs implicitly force
+					FORCE=true
 					shift 2
 				else
 					fatal-with-usage "$1 requires a value"
