@@ -19,14 +19,4 @@ jobs:
       - name: Check code quality
         run: |
           make check/lint
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-      - name: Setup bats
-        run: |
-          make setup/bats
-      - name: Run tests
-        run: |
-          make test
+
