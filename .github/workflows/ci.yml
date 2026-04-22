@@ -2,8 +2,11 @@ name: CI
 
 on:
   pull_request:
+    branches:
+      - main
   push:
-    branches: [ main, master ]
+    branches:
+      - main
 
 jobs:
   test:
@@ -11,62 +14,13 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Node (for TAP->JUnit converter)
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
+        uses: actions/checkout@v6
 
       - name: Install bats-core
         run: |
-          git clone --depth 1 https://github.com/bats-core/bats-core.git /tmp/bats-core
-          sudo /tmp/bats-core/install.sh /usr/local
-
-      - name: Install tap-junit
-        run: npm install -g tap-junit
+          make setup/bats
 
       - name: Run tests with retries and collect reports
         run: |
-          set -euo pipefail
-          mkdir -p test-reports
-          flaky=test-reports/flaky-tests.txt
-          > "$flaky"
+          make test
 
-          # Run each test file up to 3 attempts. If a test fails then later passes it's recorded as flaky.
-          for t in tests/*.bats; do
-            echo "=== $t ==="
-            attempts=0
-            passed=1
-            for i in 1 2 3; do
-              attempts=$i
-              # bats outputs TAP; convert to JUnit for reporting
-              if bats "$t" 2>&1 | tee /tmp/tap.out | tap-junit > test-reports/$(basename "$t").xml; then
-                passed=0
-                break
-              fi
-              sleep 1
-            done
-
-            if [ $passed -ne 0 ]; then
-              echo "$(basename "$t") : failed after $attempts attempts" >> test-reports/failed-tests.txt
-            elif [ $attempts -gt 1 ]; then
-              echo "$(basename "$t") : flaky (passed on attempt $attempts)" >> "$flaky"
-            fi
-          done
-
-      - name: Upload test reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-reports
-          path: test-reports
-
-      - name: Publish JUnit report and create annotations
-        if: always()
-        uses: dorny/test-reporter@v1
-        with:
-          name: Bats Tests
-          path: test-reports/*.xml
-          reporter: junit
-          fail-on-error: false
