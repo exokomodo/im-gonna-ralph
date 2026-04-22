@@ -13,7 +13,7 @@ ITERATIONS="${ITERATIONS:-$DEFAULT_ITERATIONS}"
 INIT=false
 TASK_FILE=""
 RALPH_DIR="$(pwd)/.ralph"
-DONE_FILE="${RALPH_DIR}/DONE"
+DONE_FILE="${RALPH_DIR}/.done"
 DEFAULT_TASK_FILE="${RALPH_DIR}/tasks"
 IMPORT_RUN=""
 DEFAULT_BACKEND=copilot
@@ -170,6 +170,16 @@ main() {
 	fi
 
 	mkdir -p "${RALPH_DIR}"
+
+	# If forcing a run, remove any existing DONE_FILE and ensure it's cleaned up on exit
+	if ${FORCE}; then
+		if [[ -f "${DONE_FILE}" ]]; then
+			verbose "Force flag is set. Removing ${DONE_FILE} file to allow re-execution."
+			rm -f "${DONE_FILE}" || true
+		fi
+		# Ensure cleanup of any DONE_FILE the agent might create during the run
+		trap 'rm -f "${DONE_FILE}" >/dev/null 2>&1 || true' EXIT
+	fi
 	if [[ -z "${TASK_FILE}" ]]; then
 		# Check if stdin has input
 		if [ ! -t 0 ]; then
@@ -255,16 +265,13 @@ main() {
 ralph-loop() {
 	local ITERATION
 	ITERATION="$1"
-	shift
+	# Support optional parameters safely: TASK_FILE, ITERATION_DIR, IMPORT_HISTORY
 	local TASK_FILE
-	TASK_FILE="$1"
-	shift
+	TASK_FILE="${2:-}"
 	local ITERATION_DIR
-	ITERATION_DIR="$1"
-	shift
+	ITERATION_DIR="${3:-}"
 	local IMPORT_HISTORY
-	IMPORT_HISTORY="$1"
-	shift
+	IMPORT_HISTORY="${4:-}"
 
 	verbose "Processing task file ${TASK_FILE} in ${ITERATION_DIR}"
 

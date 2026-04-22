@@ -20,7 +20,7 @@ SHELL_FILES := $(shell find . -type f -name "*.sh" -o -name "*.bash")
 ##@ Environment setup
 
 .PHONY: setup
-setup: setup/copilot setup/shellcheck ## Setup development environment
+setup: setup/copilot setup/shellcheck setup/bats ## Setup development environment
 
 .PHONY: setup/copilot
 setup/copilot:
@@ -58,14 +58,36 @@ else
 	exit 1
 endif
 
+.PHONY: setup/bats
+setup/bats: ## Install bats-core
+	if command -v bats &> /dev/null; then
+		echo "bats-core is already installed."
+		exit 0
+	fi
+ifeq ($(UNAME_S),Linux)
+	sudo apt-get install -y bats
+else ifeq ($(UNAME_S),Darwin)
+	brew install bats-core
+else
+	echo "Unsupported OS: $(UNAME_S)"
+	exit 1
+endif
+
 ##@ Code quality
 
 .PHONY: check
-check: check/lint ## Check code for linting and quality issues
+check: check/lint check/test ## Check code for linting and quality issues
 
 .PHONY: check/lint
 check/lint: ## Check code for linting and quality issues
 	shellcheck $(SHELL_FILES)
+
+.PHONY: test
+test: ## Run unit tests
+	bats tests/
+
+.PHONY: check/test
+check/test: test ## Run unit tests as check
 
 ##@ Utilities
 
