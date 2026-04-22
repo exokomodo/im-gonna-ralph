@@ -87,8 +87,7 @@ test: ## Run unit tests
 	bats tests/
 
 .PHONY: check/test
-check/test: ## Run unit tests as check
-	bats tests/
+check/test: test ## Run unit tests as check
 
 ##@ Utilities
 
