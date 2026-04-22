@@ -75,13 +75,11 @@ clean: ## Clean build artifacts
 
 .PHONY: install
 install: env-PREFIX ## Install the project
-	INSTALL="install"
 	if [ -w "$(PREFIX)" ]; then \
-		INSTALL="install"
+		ln -sf "$(RALPH)" "$(PREFIX)/ralph"
 	else
-		INSTALL="sudo install"
+		sudo ln -sf "$(RALPH)" "$(PREFIX)/ralph"
 	fi
-	$${INSTALL} -l s -m 755 "$(RALPH)" "$(PREFIX)/ralph"
 
 ##@ Helpers
 
