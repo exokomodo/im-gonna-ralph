@@ -16,6 +16,10 @@ RALPH_DIR="$(pwd)/.ralph"
 DONE_FILE="${RALPH_DIR}/.done"
 DEFAULT_TASK_FILE="${RALPH_DIR}/tasks"
 IMPORT_RUN=""
+DEFAULT_BACKEND=copilot
+BACKEND="${BACKEND:-$DEFAULT_BACKEND}"
+DEFAULT_BACKEND_ARGS="--allow-all-tools --allow-all-urls"
+BACKEND_ARGS="${BACKEND_ARGS:-$DEFAULT_BACKEND_ARGS}"
 
 export COPILOT_CUSTOM_INSTRUCTIONS_DIRS="${COPILOT_CUSTOM_INSTRUCTIONS_DIRS:-${HOME}/.agents/rules}"
 
@@ -29,6 +33,8 @@ usage() {
 		    -f <file>, --file <file>     Specify a task file (default: read from stdin, or .ralph/$(basename "${DEFAULT_TASK_FILE}"), or the lexicographically first .md/.txt file in $(basename "${RALPH_DIR}")
 		    -n <num>, --iterations <num> Number of iterations to perform (default: ${DEFAULT_ITERATIONS})
 		    -m <model>, --model <model>  Specify the AI model to use (default: ${DEFAULT_MODEL})
+		    -b <cmd>, --backend <cmd>    Agent CLI to use (default: ${DEFAULT_BACKEND})
+		    --backend-args <args>        Extra args passed to the agent CLI (default: "${DEFAULT_BACKEND_ARGS}")
 		    --force                      Force the task to run even if it is marked as completed
 		    --import-run <dir>           Import iteration files from a previous run directory as starting memory
 
@@ -110,6 +116,22 @@ parse-args() {
 					fatal-with-usage "$1 requires a value"
 				fi
 				;;
+			-b|--backend)
+				if [[ $# -gt 1 ]]; then
+					BACKEND="$2"
+					shift 2
+				else
+					fatal-with-usage "$1 requires a value"
+				fi
+				;;
+			--backend-args)
+				if [[ $# -gt 1 ]]; then
+					BACKEND_ARGS="$2"
+					shift 2
+				else
+					fatal-with-usage "$1 requires a value"
+				fi
+				;;
 			*)
 				break
 				;;
@@ -176,6 +198,8 @@ main() {
 	
 	verbose "Task file: ${TASK_FILE}"
 	verbose "Iterations: ${ITERATIONS}"
+	verbose "Backend: ${BACKEND}"
+	verbose "Backend args: ${BACKEND_ARGS}"
 	verbose "Force? ${FORCE}"
 
 	if [[ -f "${DONE_FILE}" ]]; then
@@ -197,10 +221,32 @@ main() {
 		cp "${TASK_FILE}" "${ITERATION_DIR}/task_file.txt"
 	fi
 
+	# Build imported history once
+	local IMPORT_HISTORY=""
+	if [[ -n "${IMPORT_RUN}" ]]; then
+		if [[ -d "${IMPORT_RUN}" ]]; then
+			echo "   (Importing history from $(realpath "${IMPORT_RUN}")...)"
+			for f in "${IMPORT_RUN}"/iteration_*.txt; do
+				if [ ! -e "$f" ]; then
+					continue
+				fi
+				local PREV_BASENAME
+				PREV_BASENAME=$(basename "$f")
+				local PREV_IDX
+				PREV_IDX=$(echo "${PREV_BASENAME}" | sed -E 's/.*iteration_([0-9]+)\.txt/\1/')
+				local STEP_CONTENT
+				STEP_CONTENT=$(cat "$f")
+				IMPORT_HISTORY+=$'\n'"--- IMPORTED HISTORY (${IMPORT_RUN}) (Iteration #${PREV_IDX}) ---"$'\n'"${STEP_CONTENT}"$'\n'
+			done
+		else
+			echo "Warning: import run dir '${IMPORT_RUN}' not found" >&2
+		fi
+	fi
+
 	# Do iterations
 	for i in $(seq 1 "${ITERATIONS}"); do
 		verbose "Iteration ${i}/${ITERATIONS}"
-		ralph-loop "${i}" "${TASK_FILE}" "${ITERATION_DIR}"
+		ralph-loop "${i}" "${TASK_FILE}" "${ITERATION_DIR}" "${IMPORT_HISTORY}"
 	done
 
 	fatal "Reached maximum iterations ($ITERATIONS) without completion."
@@ -216,33 +262,14 @@ ralph-loop() {
 	local ITERATION_DIR
 	ITERATION_DIR="$1"
 	shift
+	local IMPORT_HISTORY
+	IMPORT_HISTORY="$1"
+	shift
 
 	verbose "Processing task file ${TASK_FILE} in ${ITERATION_DIR}"
 
 	# Adapted from https://gist.github.com/Tavernari/01d21584f8d4d8ccea8ceca305656ab3
-	local HISTORY_CONTEXT=""
-	
-	# If specified, import history files from another run directory
-	if [[ -n "${IMPORT_RUN}" ]]; then
-		if [[ -d "${IMPORT_RUN}" ]]; then
-			echo "   (Importing history from $(realpath "${IMPORT_RUN}")...)"
-			# Iterate over iteration files in sorted order
-			for f in "${IMPORT_RUN}"/iteration_*.txt; do
-				# If no matching files, the glob remains literal; skip non-existent
-				if [ ! -e "$f" ]; then
-					continue
-				fi
-				local PREV_BASENAME
-				PREV_BASENAME=$(basename "$f")
-				local PREV_IDX
-				PREV_IDX=$(echo "${PREV_BASENAME}" | sed -E 's/.*iteration_([0-9]+)\.txt/\1/')
-				STEP_CONTENT=$(cat "$f")
-				HISTORY_CONTEXT+=$'\n'"--- IMPORTED HISTORY (${IMPORT_RUN}) (Iteration #${PREV_IDX}) ---"$'\n'"${STEP_CONTENT}"$'\n'
-			done
-		else
-			echo "Warning: import run dir '${IMPORT_RUN}' not found" >&2
-		fi
-	fi
+	local HISTORY_CONTEXT="${IMPORT_HISTORY}"
 
 	if [ "${ITERATION}" -gt 1 ]; then
 		echo "   (Reading memory from previous iterations...)"
@@ -272,10 +299,11 @@ LOOP INSTRUCTIONS:
 6. DO NOT use git automatically and commit changes. Let the user handle this. Also NEVER commit stuff found in .gitignore
 "
 
+	# shellcheck disable=SC2086 # Intentional word splitting on BACKEND_ARGS
 	if ${VERBOSE}; then
-		OUTPUT=$(copilot --allow-all-tools --allow-all-urls --model "${MODEL}" -p "$FULL_PROMPT" | tee /dev/stderr)
+		OUTPUT=$(${BACKEND} ${BACKEND_ARGS} --model "${MODEL}" -p "$FULL_PROMPT" | tee /dev/stderr)
 	else
-		OUTPUT=$(copilot --allow-all-tools --allow-all-urls --model "${MODEL}" -p "$FULL_PROMPT")
+		OUTPUT=$(${BACKEND} ${BACKEND_ARGS} --model "${MODEL}" -p "$FULL_PROMPT")
 	fi
 
 	local CURRENT_LOG_FILE
