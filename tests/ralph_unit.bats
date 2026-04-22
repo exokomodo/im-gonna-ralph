@@ -60,15 +60,15 @@ teardown() {
 }
 
 @test "fatal-with-usage prints error and usage and exits non-zero" {
-  run bash -c 'source "${PROJECT_ROOT}/src/ralph.bash"; fatal-with-usage "badness"'
+  run bash -c "source \"${PROJECT_ROOT}/src/ralph.bash\"; fatal-with-usage \"badness\""
   [ "$status" -ne 0 ]
   [[ "$output" == *"Error: badness"* ]]
   [[ "$output" == *"Usage: ralph"* ]]
 }
 
 @test "verbose prints only when VERBOSE is true" {
-  run bash -c 'source "${PROJECT_ROOT}/src/ralph.bash"; VERBOSE=false; verbose "nope"; echo "X"'
+  run bash -c "source \"${PROJECT_ROOT}/src/ralph.bash\"; VERBOSE=false; verbose \"nope\"; echo \"X\""
   [[ "$output" == *"X"* ]]
-  run bash -c 'source "${PROJECT_ROOT}/src/ralph.bash"; VERBOSE=true; verbose "yes"'
+  run bash -c "source \"${PROJECT_ROOT}/src/ralph.bash\"; VERBOSE=true; verbose \"yes\""
   [[ "$output" == *"yes"* ]]
 }

@@ -1,0 +1,49 @@
+name: Nightly — long/slow & property tests
+
+on:
+  schedule:
+    - cron: '0 3 * * *' # daily at 03:00 UTC
+  workflow_dispatch:
+
+jobs:
+  nightly-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node (for TAP->JUnit converter)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install bats-core
+        run: |
+          git clone --depth 1 https://github.com/bats-core/bats-core.git /tmp/bats-core
+          sudo /tmp/bats-core/install.sh /usr/local
+
+      - name: Install tap-junit
+        run: npm install -g tap-junit
+
+      - name: Run property/fuzzing tests
+        run: |
+          set -euo pipefail
+          mkdir -p nightly-reports
+          # Run property and fuzz tests (pattern-based)
+          for t in tests/property*.bats tests/property_*.bats tests/fuzz_*.bats tests/*fuzz* 2>/dev/null; do
+            [ -e "$t" ] || continue
+            echo "Running $t"
+            if bats "$t" 2>&1 | tap-junit > nightly-reports/$(basename "$t").xml; then
+              echo "$t: passed"
+            else
+              echo "$t: failed" >> nightly-reports/failed-tests.txt
+            fi
+          done
+
+      - name: Upload nightly reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-reports
+          path: nightly-reports
