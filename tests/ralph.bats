@@ -6,7 +6,8 @@ setup() {
 
   # Create a sourceable copy of ralph.bash with `main "$@"` removed
   RALPH_LIB="${TEST_TEMP_DIR}/ralph_lib.bash"
-  sed '$ { /^main "\$@"$/d }' "${PROJECT_ROOT}/src/ralph.bash" > "${RALPH_LIB}"
+  # Use awk to portably drop a trailing line that equals: main "$@"
+  awk 'NR==1{prev=$0;next}{print prev;prev=$0} END{if(prev!="main \"\$@\"") print prev}' "${PROJECT_ROOT}/src/ralph.bash" > "${RALPH_LIB}"
 
   cd "${TEST_TEMP_DIR}"
   mkdir -p .ralph
