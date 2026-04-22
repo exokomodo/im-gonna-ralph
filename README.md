@@ -144,7 +144,7 @@ ralph --verbose
    - ralph builds a prompt that includes the original task and the history of previous iterations
    - GitHub Copilot CLI processes the prompt and attempts to complete the task
    - The output is saved to a log file
-   - If Copilot creates a `.ralph/.done` file, the task is considered complete
+   - If Copilot creates a `.ralph/DONE` file, the task is considered complete
 4. The loop continues until the task is complete or the maximum number of iterations is reached
 
 ## Development
