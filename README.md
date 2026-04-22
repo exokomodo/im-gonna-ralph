@@ -136,6 +136,68 @@ Note: Model names supported depend on your installed GitHub Copilot CLI; check i
 ralph --verbose
 ```
 
+## Spec-Driven Development (SDD) Mode
+
+SDD mode lets ralph iterate over a folder of structured spec files instead of a single flat task file. Each spec is processed independently with its own iteration history and completion sentinel.
+
+### How SDD mode activates
+
+1. **Explicit**: pass `-s <dir>` / `--specs <dir>` to point at a specs folder
+2. **Auto-detect**: if `.ralph/specs/` exists and contains `.md` files, SDD mode activates automatically
+3. **Auto-generate**: if no specs folder exists, ralph calls the agent once to split your task file into specs
+
+Use `--no-sdd` to disable SDD and fall back to the flat task loop.
+
+### Using a specs folder directly
+
+```bash
+ralph --specs path/to/specs/
+```
+
+### Auto-generating specs from a task file
+
+```bash
+ralph --file my-big-task.md
+# ralph will generate .ralph/specs/001-*.md, 002-*.md, etc. then process them
+```
+
+### The `generate-specs` subcommand
+
+Generate specs without running the loop:
+
+```bash
+ralph --file my-task.md generate-specs
+```
+
+### Spec file format
+
+Each spec file should have these sections:
+
+```markdown
+## Overview
+Brief description of the feature or work unit.
+
+## Acceptance Criteria
+- [ ] Criterion 1
+- [ ] Criterion 2
+
+## Out of Scope
+Items explicitly excluded from this spec.
+
+## Notes
+Additional context or implementation hints.
+```
+
+### Spec completion
+
+Each spec is considered complete when a sibling `.done` file exists (e.g., `001-feature.done` for `001-feature.md`). Use `--force` to re-run completed specs.
+
+### Choosing a model for spec generation
+
+```bash
+ralph --sdd-model gpt-5 --file tasks.md
+```
+
 ## How It Works
 
 1. `ralph` reads a task description from a file or stdin

@@ -20,6 +20,12 @@ DEFAULT_BACKEND=copilot
 BACKEND="${BACKEND:-$DEFAULT_BACKEND}"
 DEFAULT_BACKEND_ARGS="--allow-all-tools --allow-all-urls"
 BACKEND_ARGS="${BACKEND_ARGS:-$DEFAULT_BACKEND_ARGS}"
+SPECS_DIR=""
+SDD_MODE=false
+NO_SDD=false
+GENERATE_SPECS_ONLY=false
+SDD_MODEL=""
+DEFAULT_SPECS_DIR="${RALPH_DIR}/specs"
 
 export COPILOT_CUSTOM_INSTRUCTIONS_DIRS="${COPILOT_CUSTOM_INSTRUCTIONS_DIRS:-${HOME}/.agents/rules}"
 
@@ -37,9 +43,13 @@ usage() {
 		    --backend-args <args>        Extra args passed to the agent CLI (default: "${DEFAULT_BACKEND_ARGS}")
 		    --force                      Force the task to run even if it is marked as completed
 		    --import-run <dir>           Import iteration files from a previous run directory as starting memory
+		    -s <dir>, --specs <dir>      Path to specs directory (default: .ralph/specs if it exists)
+		    --no-sdd                     Disable SDD mode; use raw task file passthrough
+		    --sdd-model <model>          Model for spec generation pre-pass (defaults to MODEL)
 
 		Subcommands:
 		    init                          Initialize the Ralph environment in the current directory
+		    generate-specs                Run only the task-to-specs pre-pass, then exit
 	EOF
 }
 
@@ -132,6 +142,26 @@ parse-args() {
 					fatal-with-usage "$1 requires a value"
 				fi
 				;;
+			-s|--specs)
+				if [[ $# -gt 1 && "$2" != -* ]]; then
+					SPECS_DIR="$2"
+					shift 2
+				else
+					fatal-with-usage "$1 requires a value"
+				fi
+				;;
+			--no-sdd)
+				NO_SDD=true
+				shift
+				;;
+			--sdd-model)
+				if [[ $# -gt 1 ]]; then
+					SDD_MODEL="$2"
+					shift 2
+				else
+					fatal-with-usage "$1 requires a value"
+				fi
+				;;
 			*)
 				break
 				;;
@@ -141,6 +171,8 @@ parse-args() {
 	if [[ $# -gt 0 ]]; then
 		if [[ "$1" == "init" ]]; then
 			INIT=true
+		elif [[ "$1" == "generate-specs" ]]; then
+			GENERATE_SPECS_ONLY=true
 		else
 			fatal-with-usage "Unknown subcommand: $1"
 		fi
@@ -150,6 +182,7 @@ parse-args() {
 init() {
 	echo "Initializing Ralph..."
 	mkdir -p "$(pwd)/.ralph"
+	mkdir -p "$(pwd)/.ralph/specs"
 	# Check if .gitignore exists and add .ralph to it
 	if [[ -f "$(pwd)/.gitignore" ]]; then
 		if ! grep -q "^.ralph$" "$(pwd)/.gitignore"; then
@@ -161,11 +194,156 @@ init() {
 	fi
 }
 
+generate-specs-from-task-file() {
+	local task_file="$1"
+	local specs_dir="$2"
+	local gen_model="${SDD_MODEL:-${MODEL}}"
+
+	echo "Generating specs from task file: ${task_file}"
+	mkdir -p "${specs_dir}"
+
+	local GEN_PROMPT
+	GEN_PROMPT="You are a spec writer. Read the following task file and convert it into individual spec files.
+
+Create numbered spec files under '${specs_dir}/' with the naming convention:
+  001-feature-name.md, 002-feature-name.md, etc.
+
+Each spec file MUST have these sections:
+  ## Overview
+  ## Acceptance Criteria
+  ## Out of Scope
+  ## Notes
+
+Create the directory '${specs_dir}' if it does not exist.
+Break the task into logical, independently completable units of work.
+
+Here is the task file content:
+$(cat "${task_file}")
+"
+
+	# shellcheck disable=SC2086
+	${BACKEND} ${BACKEND_ARGS} --model "${gen_model}" -p "${GEN_PROMPT}"
+	echo "Specs generated in: ${specs_dir}"
+}
+
+ralph-loop-spec() {
+	local ITERATION="$1"
+	local spec="$2"
+	local ITERATION_DIR="$3"
+	local IMPORT_HISTORY="${4:-}"
+
+	local spec_name
+	spec_name="$(basename "${spec%.md}")"
+	local spec_done="${spec%.md}.done"
+	local spec_iter_dir="${ITERATION_DIR}/${spec_name}"
+	mkdir -p "${spec_iter_dir}"
+
+	verbose "Processing spec ${spec} iteration ${ITERATION}"
+
+	local HISTORY_CONTEXT="${IMPORT_HISTORY}"
+
+	if [ "${ITERATION}" -gt 1 ]; then
+		echo "   (Reading memory from previous iterations for spec: ${spec_name}...)"
+		for (( i=1; i < ITERATION; i++ )); do
+			local PREV_FILE="${spec_iter_dir}/iteration_$i.txt"
+			if [ -f "$PREV_FILE" ]; then
+				local STEP_CONTENT
+				STEP_CONTENT=$(cat "$PREV_FILE")
+				HISTORY_CONTEXT+=$'\n'"--- HISTORY (Iteration #${i}) ---"$'\n'"${STEP_CONTENT}"$'\n'
+			fi
+		done
+	fi
+
+	local FULL_PROMPT
+	FULL_PROMPT="
+$(cat "$spec")
+
+====== SHORT-TERM MEMORY (What you already tried) ======
+${HISTORY_CONTEXT}
+========================================================
+
+LOOP INSTRUCTIONS:
+1. You are running in an autonomous loop.
+2. Analyze the history above. If you tried something and it failed, try a different approach.
+3. YOU are responsible for ensuring the code works. Run your own internal checks/tests if possible.
+4. Complete ALL acceptance criteria in this spec.
+5. When the spec is 100% COMPLETE and TESTED, create a '${spec_done}' file.
+6. If not finished, briefly describe your progress and what you expect should be done in the next iteration.
+7. DO NOT use git automatically and commit changes. Let the user handle this. Also NEVER commit stuff found in .gitignore
+"
+
+	local OUTPUT
+	# shellcheck disable=SC2086
+	if ${VERBOSE}; then
+		OUTPUT=$(${BACKEND} ${BACKEND_ARGS} --model "${MODEL}" -p "$FULL_PROMPT" | tee /dev/stderr)
+	else
+		OUTPUT=$(${BACKEND} ${BACKEND_ARGS} --model "${MODEL}" -p "$FULL_PROMPT")
+	fi
+
+	local CURRENT_LOG_FILE="${spec_iter_dir}/iteration_${ITERATION}.txt"
+	echo "${OUTPUT}" > "${CURRENT_LOG_FILE}"
+	echo "Thought process saved: ${CURRENT_LOG_FILE}"
+}
+
+ralph-sdd-loop() {
+	local ITERATION_DIR="$1"
+	local IMPORT_HISTORY="$2"
+
+	local specs
+	specs=$(find "${SPECS_DIR}" -maxdepth 1 -name "*.md" | sort)
+
+	if [[ -z "${specs}" ]]; then
+		fatal "No spec files found in ${SPECS_DIR}"
+	fi
+
+	local all_done=true
+	while IFS= read -r spec; do
+		local spec_done="${spec%.md}.done"
+		if [[ -f "${spec_done}" && "${FORCE}" != true ]]; then
+			verbose "Skipping completed spec: $(basename "${spec}")"
+			continue
+		fi
+		all_done=false
+		echo "Processing spec: $(basename "${spec}")"
+		for i in $(seq 1 "${ITERATIONS}"); do
+			ralph-loop-spec "${i}" "${spec}" "${ITERATION_DIR}" "${IMPORT_HISTORY}"
+			# Check if this spec is done
+			if [[ -f "${spec_done}" ]]; then
+				break
+			fi
+		done
+		if [[ ! -f "${spec_done}" ]]; then
+			echo "Warning: spec $(basename "${spec}") did not complete within ${ITERATIONS} iterations"
+		fi
+	done <<< "${specs}"
+
+	if ${all_done}; then
+		echo "All specs complete."
+	fi
+}
+
 main() {
 	parse-args "$@"
 
 	if ${INIT}; then
 		init
+		return
+	fi
+
+	if ${GENERATE_SPECS_ONLY}; then
+		mkdir -p "${RALPH_DIR}"
+		if [[ -z "${TASK_FILE}" ]]; then
+			if [[ -f "${DEFAULT_TASK_FILE}" ]]; then
+				TASK_FILE="${DEFAULT_TASK_FILE}"
+			else
+				fatal-with-usage "No task file provided for spec generation."
+			fi
+		fi
+		if [[ ! -f "${TASK_FILE}" ]]; then
+			fatal "Task file not found: ${TASK_FILE}"
+		fi
+		local specs_target="${SPECS_DIR:-${DEFAULT_SPECS_DIR}}"
+		generate-specs-from-task-file "${TASK_FILE}" "${specs_target}"
 		return
 	fi
 
@@ -253,13 +431,29 @@ main() {
 		fi
 	fi
 
-	# Do iterations
-	for i in $(seq 1 "${ITERATIONS}"); do
-		verbose "Iteration ${i}/${ITERATIONS}"
-		ralph-loop "${i}" "${TASK_FILE}" "${ITERATION_DIR}" "${IMPORT_HISTORY}"
-	done
+	# SDD mode detection
+	if [[ -n "${SPECS_DIR}" ]]; then
+		SDD_MODE=true
+	elif [[ -d "${DEFAULT_SPECS_DIR}" && "${NO_SDD}" != true ]]; then
+		SPECS_DIR="${DEFAULT_SPECS_DIR}"
+		SDD_MODE=true
+	elif [[ "${NO_SDD}" != true && -n "${TASK_FILE}" && -f "${TASK_FILE}" ]]; then
+		# Auto-generate specs from task file
+		SPECS_DIR="${DEFAULT_SPECS_DIR}"
+		generate-specs-from-task-file "${TASK_FILE}" "${SPECS_DIR}"
+		SDD_MODE=true
+	fi
 
-	fatal "Reached maximum iterations ($ITERATIONS) without completion."
+	if ${SDD_MODE}; then
+		ralph-sdd-loop "${ITERATION_DIR}" "${IMPORT_HISTORY}"
+	else
+		# Existing flat task loop
+		for i in $(seq 1 "${ITERATIONS}"); do
+			verbose "Iteration ${i}/${ITERATIONS}"
+			ralph-loop "${i}" "${TASK_FILE}" "${ITERATION_DIR}" "${IMPORT_HISTORY}"
+		done
+		fatal "Reached maximum iterations ($ITERATIONS) without completion."
+	fi
 }
 
 ralph-loop() {

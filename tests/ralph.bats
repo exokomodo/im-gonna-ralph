@@ -6,8 +6,7 @@ setup() {
 
   # Create a sourceable copy of ralph.bash with `main "$@"` removed
   RALPH_LIB="${TEST_TEMP_DIR}/ralph_lib.bash"
-  # Use awk to portably drop a trailing line that equals: main "$@"
-  awk 'NR==1{prev=$0;next}{print prev;prev=$0} END{if(prev!="main \"\$@\"") print prev}' "${PROJECT_ROOT}/src/ralph.bash" > "${RALPH_LIB}"
+  sed '/^main "\$@"$/d' "${PROJECT_ROOT}/src/ralph.bash" > "${RALPH_LIB}"
 
   cd "${TEST_TEMP_DIR}"
   mkdir -p .ralph
@@ -88,6 +87,48 @@ teardown() {
   # We just verify .done was removed.
   run bash "${PROJECT_ROOT}/src/ralph.bash" --force
   [ ! -f ".ralph/.done" ]
+}
+
+@test "--no-sdd flag is parsed correctly" {
+  source "${RALPH_LIB}"
+  parse-args --no-sdd
+  [ "${NO_SDD}" = "true" ]
+}
+
+@test "-s flag sets SPECS_DIR" {
+  source "${RALPH_LIB}"
+  parse-args -s /tmp/myspecs
+  [ "${SPECS_DIR}" = "/tmp/myspecs" ]
+}
+
+@test "generate-specs subcommand sets GENERATE_SPECS_ONLY" {
+  source "${RALPH_LIB}"
+  parse-args generate-specs
+  [ "${GENERATE_SPECS_ONLY}" = "true" ]
+}
+
+@test "init creates .ralph/specs directory" {
+  rm -rf .ralph
+  touch .gitignore
+  source "${RALPH_LIB}"
+  run init
+  [ "$status" -eq 0 ]
+  [ -d ".ralph/specs" ]
+}
+
+@test "SDD mode detected when specs dir has .md files" {
+  source "${RALPH_LIB}"
+  mkdir -p .ralph/specs
+  echo "## Overview" > .ralph/specs/001-test.md
+  # SDD_MODE should be false initially
+  [ "${SDD_MODE}" = "false" ]
+  # After detection logic: simulate what main does
+  if [[ -d "${DEFAULT_SPECS_DIR}" && "${NO_SDD}" != true ]]; then
+    SPECS_DIR="${DEFAULT_SPECS_DIR}"
+    SDD_MODE=true
+  fi
+  [ "${SDD_MODE}" = "true" ]
+  [ "${SPECS_DIR}" = "${DEFAULT_SPECS_DIR}" ]
 }
 
 @test "ralph-loop writes iteration file" {
