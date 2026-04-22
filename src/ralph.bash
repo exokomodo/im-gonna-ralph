@@ -4,7 +4,7 @@ set -euo pipefail
 
 STDIN=/dev/stdin
 
-DEFAULT_MODEL=gpt-5-mini
+DEFAULT_MODEL=gpt-4.1-mini
 MODEL="${MODEL:-$DEFAULT_MODEL}"
 FORCE=false
 VERBOSE=false
@@ -17,7 +17,7 @@ DONE_FILE="${RALPH_DIR}/.done"
 DEFAULT_TASK_FILE="${RALPH_DIR}/tasks"
 IMPORT_RUN=""
 
-export COPILOT_CUSTOM_INSTRUCTIONS_DIRS="${HOME}/.agents/rules"
+export COPILOT_CUSTOM_INSTRUCTIONS_DIRS="${COPILOT_CUSTOM_INSTRUCTIONS_DIRS:-${HOME}/.agents/rules}"
 
 usage() {
 	cat <<- EOF
@@ -197,18 +197,13 @@ main() {
 		cp "${TASK_FILE}" "${ITERATION_DIR}/task_file.txt"
 	fi
 
-	if [[ -f "${RALPH_DIR}/.done" ]]; then
-		echo "Task already completed. Use --force to re-run."
-		exit 0
-	fi
-
 	# Do iterations
 	for i in $(seq 1 "${ITERATIONS}"); do
 		verbose "Iteration ${i}/${ITERATIONS}"
 		ralph-loop "${i}" "${TASK_FILE}" "${ITERATION_DIR}"
 	done
 
-	fatal "Reached maximum iterations ($MAX_ITERATIONS) without completion."
+	fatal "Reached maximum iterations ($ITERATIONS) without completion."
 }
 
 ralph-loop() {
@@ -251,7 +246,7 @@ ralph-loop() {
 
 	if [ "${ITERATION}" -gt 1 ]; then
 		echo "   (Reading memory from previous iterations...)"
-		for (( i=0; i < ITERATION; i++ )); do
+		for (( i=1; i < ITERATION; i++ )); do
 			local PREV_FILE
 			PREV_FILE="${ITERATION_DIR}/iteration_$i.txt"
 			if [ -f "$PREV_FILE" ]; then
@@ -294,9 +289,8 @@ LOOP INSTRUCTIONS:
 		echo "Full history available at: ${ITERATION_DIR}"
 		exit 0
 	fi
-	((ITERATION++))
 	# Delay to avoid rate limits
-	sleep 2
+	if [[ "${ITERATION}" -lt "${ITERATIONS}" ]]; then sleep 2; fi
 }
 
 main "$@"
