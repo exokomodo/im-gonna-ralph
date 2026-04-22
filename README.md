@@ -51,15 +51,13 @@ ln -s "$(pwd)/src/ralph.bash" "/usr/local/bin/ralph"
 ### Example 1: Create a new feature
 
 ```bash
-ralph init
-ralph --verbose <(<< 'EOF'
+ralph --verbose << 'EOF'
 Create a function in src/math.js that:
 1. Exports a function called 'isPrime'
 2. Takes a number as input
 3. Returns true if the number is prime, false otherwise
 4. Includes proper error handling
 EOF
-)
 ```
 
 ### Example 2: Fix bugs
