@@ -35,7 +35,7 @@ rand_int() {
 # Generate a short random string
 rand_str() {
   # Use base64 to produce ASCII-safe output, then filter
-  head -c 12 /dev/urandom | base64 | tr -dc 'a-z0-9' | head -c ${1:-6} || echo "x"
+  head -c 12 /dev/urandom | base64 | tr -dc 'a-z0-9' | head -c "${1:-6}" || echo "x"
 }
 
 # Build a token array representing CLI arguments from a random subset of options
@@ -48,7 +48,8 @@ make_random_args() {
   if (( RANDOM % 3 == 0 )); then tokens+=("--force"); fi
   # Option: iterations (-n)
   if (( RANDOM % 2 == 0 )); then
-    local n=$(rand_int 0 999)
+    local n
+    n=$(rand_int 0 999)
     tokens+=("-n" "$n")
   fi
   # Option: model (-m)
@@ -102,7 +103,11 @@ make_random_items() {
   local tokens=()
   if (( RANDOM % 2 == 0 )); then tokens+=("-v"); fi
   if (( RANDOM % 3 == 0 )); then tokens+=("--force"); fi
-  if (( RANDOM % 2 == 0 )); then local n=$(rand_int 0 999); tokens+=("-n" "$n"); fi
+  if (( RANDOM % 2 == 0 )); then
+    local n
+    n=$(rand_int 0 999)
+    tokens+=("-n" "$n")
+  fi
   if (( RANDOM % 2 == 0 )); then tokens+=("-m" "$(rand_str 8)"); fi
   if (( RANDOM % 4 == 0 )); then tokens+=("--no-sdd"); fi
   if (( RANDOM % 5 == 0 )); then tokens+=("--sdd-model" "$(rand_str 6)"); fi
