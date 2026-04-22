@@ -20,7 +20,7 @@ jobs:
         run: |
           make setup/bats
 
-      - name: Run tests with retries and collect reports
+      - name: Run tests
         run: |
           make test
 
