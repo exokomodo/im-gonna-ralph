@@ -4,7 +4,7 @@ set -euo pipefail
 
 STDIN=/dev/stdin
 
-DEFAULT_MODEL=gpt-4.1-mini
+DEFAULT_MODEL=gpt-5-mini
 MODEL="${MODEL:-$DEFAULT_MODEL}"
 FORCE=false
 VERBOSE=false
