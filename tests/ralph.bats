@@ -71,22 +71,22 @@ teardown() {
   [ "${TASK_FILE}" = "myfile.txt" ]
 }
 
-@test "main exits 0 if .done file exists" {
+@test "main exits 0 if DONE file exists" {
   mkdir -p .ralph
-  touch .ralph/.done
+  touch .ralph/DONE
   run bash "${PROJECT_ROOT}/src/ralph.bash"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Task already completed"* ]]
 }
 
-@test "main with --force removes .done file and continues" {
+@test "main with --force removes DONE file and continues" {
   mkdir -p .ralph
-  touch .ralph/.done
+  touch .ralph/DONE
   echo "sample task" > .ralph/tasks
-  # --force removes .done, then main will fail because copilot is not available.
-  # We just verify .done was removed.
+  # --force removes DONE, then main will fail because copilot is not available.
+  # We just verify DONE was removed.
   run bash "${PROJECT_ROOT}/src/ralph.bash" --force
-  [ ! -f ".ralph/.done" ]
+  [ ! -f ".ralph/DONE" ]
 }
 
 @test "--no-sdd flag is parsed correctly" {
@@ -144,7 +144,7 @@ teardown() {
   copilot() { echo "stub output"; }
   export -f copilot
 
-  DONE_FILE="${TEST_TEMP_DIR}/.ralph/.done"
+  DONE_FILE="${TEST_TEMP_DIR}/.ralph/DONE"
   touch "${DONE_FILE}"
 
   run ralph-loop 1 "${TEST_TEMP_DIR}/.ralph/tasks" "${iter_dir}"

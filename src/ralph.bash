@@ -13,7 +13,7 @@ ITERATIONS="${ITERATIONS:-$DEFAULT_ITERATIONS}"
 INIT=false
 TASK_FILE=""
 RALPH_DIR="$(pwd)/.ralph"
-DONE_FILE="${RALPH_DIR}/.done"
+DONE_FILE="${RALPH_DIR}/DONE"
 DEFAULT_TASK_FILE="${RALPH_DIR}/tasks"
 IMPORT_RUN=""
 DEFAULT_BACKEND=copilot
@@ -234,7 +234,7 @@ ralph-loop-spec() {
 
 	local spec_name
 	spec_name="$(basename "${spec%.md}")"
-	local spec_done="${spec%.md}.done"
+	local spec_done="${spec%.md}.DONE"
 	local spec_iter_dir="${ITERATION_DIR}/${spec_name}"
 	mkdir -p "${spec_iter_dir}"
 
@@ -298,7 +298,7 @@ ralph-sdd-loop() {
 
 	local all_done=true
 	while IFS= read -r spec; do
-		local spec_done="${spec%.md}.done"
+		local spec_done="${spec%.md}.DONE"
 		if [[ -f "${spec_done}" && "${FORCE}" != true ]]; then
 			verbose "Skipping completed spec: $(basename "${spec}")"
 			continue
@@ -522,4 +522,6 @@ LOOP INSTRUCTIONS:
 	if [[ "${ITERATION}" -lt "${ITERATIONS}" ]]; then sleep 2; fi
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  main "$@"
+fi
